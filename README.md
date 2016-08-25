@@ -1,4 +1,4 @@
-Meteor-Aurelia-Seed
+Meteor Aurelia Seed com Login no Keycloak
 =============================================
 
 Embrião base para desenvolvimento de aplicações utilizando a plataforma `meteor`
@@ -13,9 +13,9 @@ com front-end `aurelia`.
 ### Instalação:
 
 ```
-$ git clone https://github.com/Procempa/meteor-aurelia-seed
+$ git clone https://github.com/silveirado/meteor-keycloak-login
 
-$ cd meteor-aurelia-seed
+$ cd meteor-keycloak-login
 
 $ meteor npm install
 
@@ -27,4 +27,3 @@ Nota:
 
 Contém uma estrutura base com exemplo de formulário
  e barra de navegação com classes `bootstrap` e `font-awesome`
-# meteor-keycloak-login
