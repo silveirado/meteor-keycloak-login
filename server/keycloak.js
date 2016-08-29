@@ -6,74 +6,76 @@ import { Config, GrantManager } from 'keycloak-auth-utils';
 import Future from 'fibers/future';
 import { HTTP } from 'meteor/http';
 import moment from 'moment';
+import _ from 'lodash';
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-Meteor.onConnection(() => {
-	console.log('CONNECT');
-});
-
-
-Meteor.publish("keycloak-user-data", function() {
-	if (this.userId) {
-
-		let config = ServiceConfiguration.configurations.findOne({ service: 'keycloak' });
-
-		let user = Meteor.users.findOne({ _id: this.userId }, {
-			fields: {
-				'services.keycloak.id': 1,
-				'services.keycloak.name': 1,
-				'services.keycloak.email': 1,
-				'services.keycloak.roles': 1
-			}
-		});
-
-		let clientRoles = user.services.keycloak.roles[config.resource] || {};
-		let realmRoles = user.services.keycloak.roles.realm_access || {};
-
-		this.added("users", this.userId, {
-			keycloakId: user.services.keycloak.id,
-			profile: {
-				name: user.services.keycloak.name
-			},
-			emails: [
-				user.services.keycloak.email
-			],
-			roles: {
-				client: clientRoles.roles,
-				realm: realmRoles.roles
-			}
-		});
-		this.ready();
-	} else {
-		this.ready();
-	}
-});
+const KEYCLOAK_PREFIX = 'keycloak';
+//TODO: Replace following contant with your clientId
+const KEYCLOAK_CLIENT = 'client';
+const KEYCLOAK_SERVICE = `${KEYCLOAK_PREFIX}-${KEYCLOAK_CLIENT}`;
 
 Meteor.startup(function() {
 
-	Accounts.oauth.registerService('keycloak');
+	Accounts.oauth.registerService(KEYCLOAK_SERVICE);
 
-	ServiceConfiguration.configurations.upsert({ service: "keycloak" }, {
+	ServiceConfiguration.configurations.upsert({ service: KEYCLOAK_SERVICE }, {
 		$set: {
 			"loginStyle": "redirect",
-			"realm": "celic",
-			"realm-public-key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxwkQGO1G+swYl5VrSjm751yK4IhcZTubLhs0oJag6uBrDBDf9TOhG0NpPtgWeOianv6X5nhwHsRpwXKmnVTV5Boow+As/s03hnE8xsSLOVdKwbBGo3nIJ3vELPwVVqDhOscqGj/bmO8OA9mChrl/erFFgzGaf+9KUsQdA6msyJXVi8h02ipDmQUw5Hj55FJLeyGd710CQ/qnFaQxVnM/sTF5LNcN+mhRRDMBVtpcEZ19M1kkJrMHuZq/AmU3xS0f482HxYHWvd2oSdYc5TDeQ8daQwsKC0CD58MPjBp7Gt/GGqQxyqBt5/AUEGphRecRyMVQvC2ASaSvpCcyJWpl7QIDAQAB",
-			"auth-server-url": "https://sso-des.procempa.com.br/auth",
-			"ssl-required": "external",
-			"resource": "celic-requisicoes-servico",
-			"public-client": true,
-			"use-resource-role-mappings": true
+			//TODO: Replace following keys with your client Keycloak OIDC JSON Keys
+			"realm": "realm",
+			"realm-public-key": "realm-public-key",
+			"auth-server-url": "auth-server-url",
+			"ssl-required": "ssl-required",
+			"resource": "resource",
+			"public-client": "public-client",
+			"use-resource-role-mappings": "use-resource-role-mappings"
 		}
 	});
 
-	OAuth.registerService('keycloak', 2, null, function(query) {
+	Meteor.publish("keycloak-user-data", function() {
+		if (this.userId) {
+
+			let config = ServiceConfiguration.configurations.findOne({ service: KEYCLOAK_SERVICE });
+			let fields = {};
+			fields[`services.${KEYCLOAK_SERVICE}.id`] = 1;
+			fields[`services.${KEYCLOAK_SERVICE}.name`] = 1;
+			fields[`services.${KEYCLOAK_SERVICE}.email`] = 1;
+			fields[`services.${KEYCLOAK_SERVICE}.roles`] = 1;
+
+			let user = Meteor.users.findOne({ _id: this.userId }, {
+				fields: fields
+			});
+
+			let clientRoles = user.services[KEYCLOAK_SERVICE].roles.resource_access[config.resource] || {};
+			let realmRoles = user.services[KEYCLOAK_SERVICE].roles.realm_access || {};
+
+			this.added("users", this.userId, {
+				keycloakId: user.services[KEYCLOAK_SERVICE].id,
+				profile: {
+					name: user.services[KEYCLOAK_SERVICE].name
+				},
+				emails: [
+					user.services[KEYCLOAK_SERVICE].email
+				],
+				roles: {
+					client: clientRoles,
+					realm: realmRoles
+				}
+			});
+			this.ready();
+		} else {
+			this.ready();
+		}
+	});
+
+	OAuth.registerService(KEYCLOAK_SERVICE, 2, null, function(query) {
 
 		let future = new Future();
 		let code = query.code;
 		let sessionId = query.state;
-		let config = ServiceConfiguration.configurations.findOne({ service: 'keycloak' });
-		let redirectUri = OAuth._redirectUri('keycloak', config);
+		let config = ServiceConfiguration.configurations.findOne({ service: KEYCLOAK_SERVICE });
+		let redirectUri = OAuth._redirectUri(KEYCLOAK_SERVICE, config);
 		let request = { "session": { "auth_redirect_uri": redirectUri } };
 
 		let keycloakConfig = new Config(config);
@@ -92,8 +94,26 @@ Meteor.startup(function() {
 				redirect_uri: redirectUri
 			}
 		};
-
 		let grant = grantManager.obtainFromCode(request, code, sessionId, undefined, function(error, grant) {
+
+			if (error) {
+				future.throw(error);
+				return;
+			}
+
+			let filter = {};
+			filter[`services.${KEYCLOAK_SERVICE}.id`] = grant.access_token.content.preferred_username;
+
+			let user = Meteor.users.findOne(filter);
+
+			let roles = {};
+			if (user) {
+				roles = user.services[KEYCLOAK_SERVICE].roles || {};
+			}
+			roles.resource_access = roles.resource_access || {};
+			roles.resource_access[KEYCLOAK_CLIENT] = ((grant.access_token.content.resource_access || {})[KEYCLOAK_CLIENT] || {}).roles;
+			roles.realm_access = (grant.access_token.content.realm_access || {});
+
 			let result = {
 				serviceData: {
 					id: grant.access_token.content.preferred_username,
@@ -103,10 +123,7 @@ Meteor.startup(function() {
 					given_name: grant.access_token.content.given_name,
 					family_name: grant.access_token.content.family_name,
 					grant: grant.toString(),
-					roles: {
-						resource_access: grant.access_token.content.resource_access,
-						realm_access: grant.access_token.content.realm_access
-					}
+					roles: roles
 				},
 				options: {
 					profile: {
@@ -124,7 +141,7 @@ Meteor.startup(function() {
 		getKeycloakConfiguration: function() {
 			return ServiceConfiguration
 				.configurations
-				.findOne({ "service": 'keycloak' }, {
+				.findOne({ "service": KEYCLOAK_SERVICE }, {
 					"fields": {
 						"auth-server-url": 1,
 						"loginStyle": 1,

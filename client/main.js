@@ -7,10 +7,14 @@ import { DDP } from 'meteor/ddp-client';
 
 import 'meteor/accounts-oauth';
 
+const KEYCLOAK_PREFIX = 'keycloak';
+const KEYCLOAK_CLIENT = 'exemplo';
+const KEYCLOAK_SERVICE = `${KEYCLOAK_PREFIX}-${KEYCLOAK_CLIENT}`;
+
 export class App {
 
 	constructor() {
-		Accounts.oauth.registerService('keycloak');
+		Accounts.oauth.registerService(KEYCLOAK_SERVICE);
 	}
 
 	logout() {
@@ -47,7 +51,7 @@ export class App {
 				moduleId: "./pages/contato/contato",
 				nav: true,
 				title: "Contatos",
-				settings: { roles: ['celic-admin'] }
+				settings: { roles: ['admin'] }
 			}
 		]);
 		this.router = router;
@@ -58,12 +62,13 @@ class AuthorizeStep {
 
 	loadKeycloakConfig() {
 		return new Promise((resolve, reject) => {
-			localForage.getItem("keycloak.config", (err, value) => {
+			localForage.getItem(`${KEYCLOAK_SERVICE}.config`, (err, value) => {
 				if (value) {
 					resolve(value);
 				} else {
 					Meteor.call("getKeycloakConfiguration", function(error, config) {
 						if (config) {
+							localForage.setItem(`${KEYCLOAK_SERVICE}.config`, config);
 							resolve(config);
 						} else {
 							console.error(error);
@@ -86,8 +91,8 @@ class AuthorizeStep {
 						.then((config) => {
 							let keycloak = new Keycloak({}, config);
 							let uuid = Random.secret();
-							let redirectUrl = OAuth._redirectUri('keycloak', config);
-							let loginStyle = OAuth._loginStyle('keycloak', {
+							let redirectUrl = OAuth._redirectUri(KEYCLOAK_SERVICE, config);
+							let loginStyle = OAuth._loginStyle(KEYCLOAK_SERVICE, {
 								loginStyle: 'redirect'
 							});
 
@@ -96,7 +101,7 @@ class AuthorizeStep {
 							let loginUrl = keycloak.loginUrl(state, redirectUrl);
 
 							OAuth.launchLogin({
-								loginService: "keycloak",
+								loginService: KEYCLOAK_SERVICE,
 								loginStyle: 'redirect',
 								loginUrl: loginUrl,
 								credentialToken: uuid
@@ -116,7 +121,7 @@ class AuthorizeStep {
 
 						Meteor.subscribe("keycloak-user-data", () => {
 							let user = Meteor.user();
-							let userRoles = user.roles;
+							let userRoles = (user.roles || {});
 							if (userRoles.client && _.intersection(userRoles.client, roles).length) {
 								resolve(next());
 							} else if (userRoles.realm && _.intersection(userRoles.realm, roles).length) {

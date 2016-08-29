@@ -3,7 +3,7 @@ import Future from 'fibers/future';
 
 Meteor.methods({
 	callApi: function() {
-		let url = 'https://sso-des.procempa.com.br/auth/realms/celic/protocol/openid-connect/userinfo';
+		let url = 'https://sso-des.procempa.com.br/auth/realms/procempa/protocol/openid-connect/userinfo';
 		let api = new ProtectedApi(url);
 		let future = new Future();
 
