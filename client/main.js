@@ -8,7 +8,8 @@ import { DDP } from 'meteor/ddp-client';
 import 'meteor/accounts-oauth';
 
 const KEYCLOAK_PREFIX = 'keycloak';
-const KEYCLOAK_CLIENT = 'exemplo';
+//TODO: Replace following contant with your clientId
+const KEYCLOAK_CLIENT = 'client';
 const KEYCLOAK_SERVICE = `${KEYCLOAK_PREFIX}-${KEYCLOAK_CLIENT}`;
 
 export class App {
